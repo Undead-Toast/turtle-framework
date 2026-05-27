@@ -4,13 +4,15 @@ local Log = require("helpers.Log")
 local File = require("helpers.File")
 
 -- TODOS
---  clearStaleFlush
---  rehashFlush
---  
-
-
-
-
+--  MoveLog:clearStaleFlush() -- need for init
+--  MoveLog:rehashFlush() -- need for init
+--  MoveLog:init() flush logic
+--  Navigation:backout() -- set up default backout()
+--  Navigation:moveTo() -- the big boy -- pathfinding logic
+--  Add hook for moveTo() onObstacle res
+--  Refactor Nav to Navigation in other files
+--  Testing
+--  Cleanup
 
 -- config
 local STATE_FILE = "navigation-state"
@@ -77,7 +79,13 @@ end
 function MoveLog:init(opts)
     self.runHash = File.generateRandomFileId() -- random hash kinda for the most part
     if opts.flush then
-        
+        -- rehash all flush pages into new run
+        -- add to pages
+        -- if last file count > MOVE_LIMIT_BEFORE_FLUSH then
+            -- seed self.moves with last file of moves
+            -- remove last file
+    else
+        -- clear stale flush files
     end
 end
 
