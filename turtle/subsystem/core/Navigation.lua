@@ -4,9 +4,10 @@ local Log = require("helpers.Log")
 local File = require("helpers.File")
 
 -- TODOS
---  MoveLog:clearStaleFlush() -- need for init
---  MoveLog:rehashFlush() -- need for init
+--  MoveLog:clearStaleFlushFiles() -- need for init
+--  MoveLog:rehashFlushFiles() -- need for init
 --  MoveLog:init() flush logic
+--  MoveLog:shutdown() -- we will see how much clean up is needed on shutdown
 --  Navigation:backout() -- set up default backout()
 --  Navigation:moveTo() -- the big boy -- pathfinding logic
 --  Add hook for moveTo() onObstacle res
@@ -114,11 +115,11 @@ function MoveLog:flush()
 end
 
 -- remove old runs
-function MoveLog:clearStaleFlush()
+function MoveLog:clearStaleFlushFiles()
 end
 
 -- rehash old run files into new
-function MoveLog:rehashFlush()
+function MoveLog:rehashFlushFiles()
 end
 
 function MoveLog:recordMove(dir)
