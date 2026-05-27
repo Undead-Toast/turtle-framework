@@ -15,6 +15,18 @@ function File.generateRandomFileId()
     return string.format("%s-%x", time, math.random(0, 0xFFFF))
 end
 
+function File.createFile(path, name)
+    local fullPath = fs.combine(path, name)
+    local ok, err = File.ensureDir(fullPath)
+    if not ok then return false, err end
+
+    local file = fs.open(fullPath, "w")
+    if not file then return false, "could not open " .. fullPath .. " for writing" end
+
+    file.close()
+    return true
+end
+
 function File.write(path, data, newLine, append)
     local ok, err = File.ensureDir(path)
     if not ok then return false, err end

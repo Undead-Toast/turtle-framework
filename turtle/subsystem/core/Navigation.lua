@@ -3,19 +3,24 @@ local Fuel = require("turtle.Fuel")
 local Log = require("helpers.Log")
 local File = require("helpers.File")
 
+-- TODOS
+--  clearStaleFlush
+--  rehashFlush
+--  
+
 
 
 
 
 -- config
 local STATE_FILE = "navigation-state"
-local FLUSH_DIR = "/data/flush/movelog"
+local FLUSH_DIR = "/data/flush/movelog/"
 
 local MOVE_LIMIT_BEFORE_FLUSH = 200
 
 -- constants
 local CARDINALS = {"N", "E", "S", "W"}
-local HEADINGS = {"N", "E", "S", "W", "U", "D"}
+local HEADINGS = {"N", "E", "S", "W", "U", "D"} -- might not use
 
 local ROTATION_VALUES = {
     ["N"] = 1,
@@ -39,15 +44,7 @@ local INVERSE_HEADING = {
     U = "D", D = "U",
 }
 
--- move log
-local MoveLog = {
-    runHash = nil,
-    moves = {},
-    flush = {
-        pages = nil,
-    },
-}
-
+-- helper
 local function Coordinate(coords, heading)
     if type(coords) ~= "table" then return false, "coords is not a table" end
     if #coords ~= 3 then return false, "coords must have exactly 3 elements" end
@@ -63,45 +60,168 @@ local function Coordinate(coords, heading)
     return {coords = coords, heading = heading}
 end
 
+-- move log
+local MoveLog = {
+    runHash = nil,
+    moves = {},
+    pages = {},
+}
+
 function MoveLog.generateNextFlushFile()
     local flushDir = File.ensureDir(FLUSH_DIR)
-    -- ensure flush dir
-    -- generate file id - #pages + 1 .. self.runHash
-    -- create file
-    -- return filename
+    if not flushDir then Log:fatal("Could not find or create flush directory.") end
+
+    return (#MoveLog.pages + 1) .. "-" .. MoveLog.runHash .. ".txt"
 end
 
-function MoveLog:init()
+function MoveLog:init(opts)
     self.runHash = File.generateRandomFileId() -- random hash kinda for the most part
-end
-
-function MoveLog:recordMove(dir)
-    -- check move size
-    -- if full
-        -- generate next flush file
-        -- add it to flush.pages
-        -- 
-end
-
-function MoveLog:recordRotation(targetHeading)
-
-end
-
-function MoveLog:readAll()
+    if opts.flush then
+        
+    end
 end
 
 function MoveLog:flush()
-    -- generateNextFlushFile
-    -- for each move:
-        -- write move
-        -- pop from array? or set moves to {}?
+    if #self.moves == 0 then return true end
+    local flushFile = self.generateNextFlushFile()
+    self.pages[#self.pages+1] = flushFile
+
+    local filePath = FLUSH_DIR .. flushFile
     
+    local file = fs.open(filePath, "a") -- using fs instead of File due to continuous write
+    if not file then return false, "could not open " .. filePath .. " for appending" end
+
+    -- move to disk
+    local moves = self.moves
+    for i = 1, #moves do
+        local serialized = textutils.serialize(moves[i], {compact = true})
+        file.writeLine(serialized)
+    end
+
+    file.close()
+    -- flush
+    self.moves = {}
+    Log:debug("NAV: Flushed.")
+    return true, flushFile
 end
 
-function MoveLog:clearFlush()
+-- remove old runs
+function MoveLog:clearStaleFlush()
 end
 
+-- rehash old run files into new
 function MoveLog:rehashFlush()
+end
+
+function MoveLog:recordMove(dir)
+    -- check flush
+    if #self.moves >= MOVE_LIMIT_BEFORE_FLUSH then
+        self:flush()
+    end
+
+    local moves = self.moves
+    Log:debug(moves)
+
+    -- if any moves prior, check direction
+    if #moves >= 1 then
+        local lastMove = moves[#moves]
+        local lastDir = lastMove.direction
+        if dir == lastDir then
+            local lastVal = lastMove.count
+            self.moves[#moves].count = lastVal + 1
+            return true
+        end
+    end
+
+    local payload = {direction = dir, count = 1}
+    local index = #moves or 0
+    self.moves[index + 1] = payload
+
+    return true
+end
+
+function MoveLog:read(amount, opts)
+    opts = opts or {}
+    if not amount or amount <= 0 then return nil end
+
+    local result = {}
+    local count = 0
+
+    -- in-memory first (newest)
+    for i = #self.moves, 1, -1 do
+        if count >= amount then break end
+        count = count + 1
+        result[count] = self.moves[i]
+    end
+
+    -- if we hit the cap or don't want flush, stop here
+    if count >= amount or not opts.flush then
+        if count == 0 then return nil end
+        return result
+    end
+
+    -- pages from newest to oldest
+    for i = #self.pages, 1, -1 do
+        if count >= amount then break end
+
+        local path = FLUSH_DIR .. self.pages[i]
+        local content = File.readLines(path)
+        if not content then
+            Log:fatal("NAV: Failed to read flush file " .. path)
+        end
+
+        for j = #content, 1, -1 do
+            if count >= amount then break end
+            local move = textutils.unserialize(content[j])
+            if move then
+                count = count + 1
+                result[count] = move
+            end
+        end
+    end
+
+    if count == 0 then return nil end
+    return result
+end
+
+function MoveLog:readAll(opts)
+    opts = opts or {}
+    local result = {}
+    local count = 0
+
+    -- in-memory first (newest)
+    for i = #self.moves, 1, -1 do
+        count = count + 1
+        result[count] = self.moves[i]
+    end
+
+    if not opts.flush or #self.pages == 0 then
+        return result
+    end
+
+    -- pages from newest to oldest
+    for i = #self.pages, 1, -1 do
+        local path = FLUSH_DIR .. self.pages[i]
+        local content = File.readLines(path)
+
+        if not content then
+            Log:fatal("NAV: Failed to read flush file " .. path)
+        end
+
+        if #content == 0 then
+            Log:warn("NAV: Empty flush file.")
+        end
+
+        for j = #content, 1, -1 do
+            local move = textutils.unserialize(content[j])
+            if move then
+                count = count + 1
+                result[count] = move
+            end
+        end
+    end
+
+    return result
 end
 
 function MoveLog:shutdown()
@@ -114,7 +234,7 @@ end
 
 -- navigation
 local Navigation = {
-    init = false,
+    initialized = false,
     backout = backout,
     home = nil,
     state = nil,
@@ -145,10 +265,10 @@ end
 function Navigation:init(hCoords, hHeading, opts)
     Log:startup("NAV: Starting nav initializion.")
 
-    -- if state, use it. else, re-init with defaults
+    -- if state, use it
     if State.exists(STATE_FILE) then
         local state = State.load(STATE_FILE)
-        local valid, err = validateNavigationState(state)
+        local valid, _ = validateNavigationState(state)
         if valid then
             self.state = state
 
@@ -158,11 +278,12 @@ function Navigation:init(hCoords, hHeading, opts)
         end
     end
 
-    if not self.init then
+    -- else, re-init with defaults
+    if not self.initialized then
         if not hCoords or not hHeading then return nil end
         if type(hCoords) ~= "table" then return nil end
         if #hCoords ~= 3 then print("3") return nil end
-        if not self.ROTATION_VALUES[hHeading] then return nil end
+        if not ROTATION_VALUES[hHeading] then return nil end
 
         -- Init
         self.state = Coordinate(hCoords, hHeading)
@@ -178,47 +299,42 @@ function Navigation:init(hCoords, hHeading, opts)
     self.home = Coordinate(hCoords, hHeading)
 
     -- move log stuff
-    MoveLog:init()
+    local includeFlush = opts.flush or false
+    MoveLog:init({flush = includeFlush})
 
     -- init success
     self.init = true
 end
 
-function Navigation:recalculate(heading, units)
+function Navigation:recalculate(heading)
     local coords = self.state.coords
 
     if heading == "N" then
-        coords[3] = coords[3] - units
+        coords[3] = coords[3] - 1
     elseif heading == "E" then
-        coords[1] = coords[1] + units
+        coords[1] = coords[1] + 1
     elseif heading == "S" then
-        coords[3] = coords[3] + units
+        coords[3] = coords[3] + 1
     elseif heading == "W" then
-        coords[1] = coords[1] - units
+        coords[1] = coords[1] - 1
     elseif heading == "U" then
-        coords[2] = coords[2] + units
+        coords[2] = coords[2] + 1
     elseif heading == "D" then
-        coords[2] = coords[2] - units
+        coords[2] = coords[2] - 1
     else
         return false
     end
 
-    -- Move Log
-
-    -- Save state
     State.save(STATE_FILE, self.state)
-    
+
     Log:debug("NAV: Move to " .. coords[1] .. "," .. coords[2] .. "," .. coords[3] .. " : " .. heading)
     return true
 end
 
--- move
--- direction - N,E,S,W,U,D
--- units - distance
--- backout(optional) - what to do if cannot complete
+-- movement
 function Navigation:moveBy(direction, distance, backout)
     if not direction or not distance then return nil end
-    if not self.VALID_HEADINGS[direction] then return nil end
+    if not VALID_HEADINGS[direction] then return nil end
     if type(distance) ~= "number" then return nil end
     if distance < 0 then return nil end
 
@@ -233,7 +349,8 @@ function Navigation:moveBy(direction, distance, backout)
 
     for i = 1, distance do
         if moveFn() then
-            self:recalculate(direction, 1)
+            MoveLog:recordMove(direction)
+            self:recalculate(direction)
             unitsMoved = i
         else
             local handler = backout or self.backout
@@ -243,7 +360,6 @@ function Navigation:moveBy(direction, distance, backout)
     end
 
     return true, unitsMoved
-
 end
 
 function Navigation:moveTo(coords, endDirection, opts)
@@ -260,27 +376,27 @@ function Navigation:rotateTo(targetCardinal)
 
     local cwDistance = (tHeadingValue - cHeadingValue) % 4
 
+    if cwDistance == 0 then return true end
+
     local rotated = false
 
     if cwDistance == 1 then
         rotated = turtle.turnRight()
     elseif cwDistance == 2 then
         rotated = turtle.turnLeft()
-        if rotated then
-            rotated = turtle.turnLeft()
-        else
-            print("Failed to rotate")
+        if not rotated then
+            Log:error("NAV: Failed to rotate")
             return false
         end
+        -- persist intermediate heading so a failure on the second turn leaves state consistent
+        self.state.heading = CARDINALS[((cHeadingValue - 2) % 4) + 1]
+        State.save(STATE_FILE, self.state)
+        rotated = turtle.turnLeft()
     elseif cwDistance == 3 then
         rotated = turtle.turnLeft()
-    else
-        return true
     end
 
     if rotated then
-        MoveLog:save({rotated = targetCardinal})
-
         self.state.heading = targetCardinal
         State.save(STATE_FILE, self.state)
         Log:debug("NAV: Rotated to heading: " .. targetCardinal)
