@@ -1,0 +1,7 @@
+# Runtime state written by ComputerCraft at runtime
+data/logs/
+data/state/
+
+# OS junk
+Thumbs.db
+.DS_Store
