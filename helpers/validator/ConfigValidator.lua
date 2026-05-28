@@ -1,0 +1,3 @@
+local ConfigValidator = {}
+
+return ConfigValidator

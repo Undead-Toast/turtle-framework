@@ -1,30 +1,42 @@
-local Log     = require("helpers.Log")
-local Test    = require("helpers.TestUtils")
-local Nav     = require("turtle.Nav")
-local Inventory = require("turtle.Inventory")
-local Inspect = require("turtle.Inspect")
+local Log           = require("helpers.Log")
+local Navigation    = require("turtle.subsystem.core.Navigation.init")
 
-local TEST_CLEANUP    = true
-local LOG_CLEANUP     = true
-
-local Turtle = {}
+local Turtle = {
+    name = nil,
+    agentType = nil,
+    logCleanup = nil,
+}
 
 local function initSequence(config)
-    Log:startup("Init sequence started.")
-    Nav:init(config.HOME_COORDS, config.HOME_HEADING)
-    Inventory:init()
-    Log:startup("Init sequence completed.")
+    -- TODO: Validate config before use
+    local turtleConfig = config.turtle
+    local navigationConfig = config.navigation
+    local cleanupConfig = config.cleanup
+
+    Log:startup("CORE: Init sequence started.")
+    
+    Turtle.name = turtleConfig.NAME
+    Turtle.agentType = turtleConfig.AGENT_TYPE
+
+    Turtle.logCleanup = cleanupConfig.LOGS
+
+    -- init nav
+    Navigation:init(
+        navigationConfig.HOME_COORDS,
+        navigationConfig.HOME_HEADING,
+        {flush = navigationConfig.MOVE_LOG.FLUSH}
+    )
+    Log:startup("CORE: Init sequence completed.")
 end
 
 local function shutdown()
     Log:shutdown("Shutdown sequence started.")
-    if TEST_CLEANUP then
-        Log:shutdown("Cleaning old test files...")
-        local cleanTestsOk, _ = Test.clearOldTestFiles()
-        if not cleanTestsOk then Log:error("Failed to delete old test files.") end
-    end
 
-    if LOG_CLEANUP then
+    -- persist the move log so the trail survives to the next run; this is what
+    -- lets a later run's returnHome retrace a path recorded in an earlier run
+    Navigation:shutdown()
+
+    if Turtle.logCleanup then
         Log:shutdown("Cleaning old log files...")
         local cleanLogsOk, _ = Log.clearOldLogs()
         if not cleanLogsOk then Log:error("Failed to delete old log files.") end
@@ -38,7 +50,7 @@ local function errorHandler(err)
 end
 
 function Turtle.run(config, mainLoopFn)
-    Log:init(Log.LOG_LEVELS[2])
+    Log:init(config.system.LOG_LEVEL)
     initSequence(config)
 
     local ok, err = xpcall(mainLoopFn, errorHandler)

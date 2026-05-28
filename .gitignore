@@ -1,6 +1,8 @@
 # Runtime state written by ComputerCraft at runtime
 data/logs/
 data/state/
+deprecated/
+docs/
 
 # OS junk
 Thumbs.db
